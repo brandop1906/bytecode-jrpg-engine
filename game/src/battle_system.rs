@@ -2,8 +2,10 @@ use rand::Rng;
 use bevy::prelude::*;
 use crate::scene::*;
 use crate::state::*;
+use std::collections::HashMap;
+use crate::player::*;
 
-#[derive(Component)]
+#[derive(Component, Clone)]
 pub struct BattlerStats {
     pub hp: u32,
     pub max_hp: u32,
@@ -17,6 +19,9 @@ pub struct BattlerStats {
     pub level: u32,
     pub atb_timer: f32,
 }
+
+#[derive(Component)]
+pub struct Enemy;
 
 #[derive(Resource)]
 pub struct EncounterTracker {
@@ -50,7 +55,35 @@ pub fn encounter_check_system(
 #[derive(Component)]
 pub struct BattleEntity;
 
-pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>) {
+#[derive(Clone)]
+pub struct EnemyDef {
+    pub name: String,
+    pub sprite: String,
+    pub stats: BattlerStats,
+}
+
+#[derive(Resource)]
+pub struct EnemyLibrary {
+    pub enemies: HashMap<String, EnemyDef>,
+}
+
+impl EnemyLibrary {
+    pub fn new() -> Self {
+        EnemyLibrary { enemies: HashMap::new() }
+    }
+
+    pub fn add_enemy(&mut self, id: String, enemy: EnemyDef) {
+        self.enemies.insert(id, enemy);
+    }
+}
+
+pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut player_query: Query<&mut Visibility, With<PlayerControlled>>,
+    enemy_lib: Res<EnemyLibrary>) {
+    
+    if let Ok(mut visibility) = player_query.single_mut() {
+        *visibility = Visibility::Hidden;
+    }
+
     commands.spawn((
         BattleEntity,
         Sprite {
@@ -59,6 +92,19 @@ pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         },
         Transform::from_xyz(0.0, 0.0, 0.0),
+    ));
+
+    let enemy = enemy_lib.enemies.get("mako_guard").unwrap();
+    commands.spawn((
+        BattleEntity,
+        Enemy,
+        enemy.stats.clone(),
+        Sprite {
+            image: asset_server.load(enemy.sprite.clone()),
+            custom_size: Some(Vec2::new(64.0, 64.0)),
+            ..default()
+        },
+        Transform::from_xyz(200.0, 0.0, 1.0),
     ));
 
 }

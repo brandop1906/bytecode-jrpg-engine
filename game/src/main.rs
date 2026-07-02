@@ -64,12 +64,34 @@ fn main() {
     scene_lib.add_scene("town".to_string(), town);
     scene_lib.add_scene("reactor".to_string(), reactor);
 
+    let mako_guard = EnemyDef {
+        name: "Mako Guard".to_string(),
+        sprite: "mako_guard_side.png".to_string(),
+        stats: BattlerStats {
+            hp: 30,
+            max_hp: 30,
+            mp: 0,
+            max_mp: 0,
+            attack: 5,
+            defense: 2,
+            magic_attack: 0,
+            magic_defense: 0,
+            speed: 3,
+            level: 1,
+            atb_timer: 0.0,
+        },
+    };
+
+    let mut enemy_lib = battle_system::EnemyLibrary::new();
+    enemy_lib.add_enemy("mako_guard".to_string(), mako_guard);
+
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(ScriptVM::new(vec![], vec![]))
         .insert_resource(walkmesh::WalkableArea::new())
         .insert_resource(ScriptLibrary::new())
         .insert_resource(scene_lib)
+        .insert_resource(enemy_lib)
         .insert_resource(battle_system::EncounterTracker { danger: 0.0 })
         .insert_state(GameState::Field)
         .init_resource::<Messages<SceneChangeRequest>>()
