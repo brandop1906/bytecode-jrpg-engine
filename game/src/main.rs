@@ -77,6 +77,7 @@ fn main() {
         .add_systems(Update, (move_player, process_vm_commands, render_text, 
             close_dialog_on_input, player_interact, detection, transition, update_fade, encounter_check_system)
             .run_if(in_state(GameState::Field)))
+        .add_systems(OnEnter(GameState::Battle), setup_battle)
         .run();
 }   
 

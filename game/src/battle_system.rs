@@ -46,3 +46,19 @@ pub fn encounter_check_system(
         }
     }
 }
+
+#[derive(Component)]
+pub struct BattleEntity;
+
+pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn((
+        BattleEntity,
+        Sprite {
+            image: asset_server.load("battle_reactor.png"),
+            custom_size: Some(Vec2::new(1280.0, 720.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, 0.0),
+    ));
+
+}
