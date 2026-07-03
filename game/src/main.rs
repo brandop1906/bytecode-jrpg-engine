@@ -85,6 +85,27 @@ fn main() {
     let mut enemy_lib = battle_system::EnemyLibrary::new();
     enemy_lib.add_enemy("mako_guard".to_string(), mako_guard);
 
+    let player = PlayerDef {
+        name: "Zane".to_string(),
+        sprite: "Zane_down.png".to_string(),
+        stats: BattlerStats {
+            hp: 100,
+            max_hp: 100,
+            mp: 50,
+            max_mp: 50,
+            attack: 10,
+            defense: 5,
+            magic_attack: 5,
+            magic_defense: 3,
+            speed: 5,
+            level: 1,
+            atb_timer: 0.0,
+        },
+    };
+
+    let mut player_lib = battle_system::PlayerLibrary::new();
+    player_lib.add_player("Zane".to_string(), player);
+
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(ScriptVM::new(vec![], vec![]))
@@ -92,6 +113,7 @@ fn main() {
         .insert_resource(ScriptLibrary::new())
         .insert_resource(scene_lib)
         .insert_resource(enemy_lib)
+        .insert_resource(player_lib)
         .insert_resource(battle_system::EncounterTracker { danger: 0.0 })
         .insert_state(GameState::Field)
         .init_resource::<Messages<SceneChangeRequest>>()

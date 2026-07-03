@@ -23,6 +23,10 @@ pub struct BattlerStats {
 #[derive(Component)]
 pub struct Enemy;
 
+#[derive(Component)]
+pub struct Player;
+
+
 #[derive(Resource)]
 pub struct EncounterTracker {
     pub danger: f32,
@@ -78,7 +82,7 @@ impl EnemyLibrary {
 }
 
 pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut player_query: Query<&mut Visibility, With<PlayerControlled>>,
-    enemy_lib: Res<EnemyLibrary>) {
+    enemy_lib: Res<EnemyLibrary>, player_lib: Res<PlayerLibrary>) {
     
     if let Ok(mut visibility) = player_query.single_mut() {
         *visibility = Visibility::Hidden;
@@ -107,4 +111,38 @@ pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut 
         Transform::from_xyz(200.0, 0.0, 1.0),
     ));
 
+    let player = player_lib.players.get("Zane").unwrap();
+    commands.spawn((
+        BattleEntity,
+        Player,
+        player.stats.clone(),
+        Sprite {
+            image: asset_server.load(player.sprite.clone()),
+            custom_size: Some(Vec2::new(64.0, 64.0)),
+            ..default()
+        },
+        Transform::from_xyz(-200.0, 0.0, 1.0),
+    ));
+
+}
+
+#[derive(Clone)]
+pub struct PlayerDef {
+    pub name: String,
+    pub sprite: String,
+    pub stats: BattlerStats,
+}
+#[derive(Resource)]
+pub struct PlayerLibrary {
+    pub players: HashMap<String, PlayerDef>,
+}
+
+impl PlayerLibrary {
+    pub fn new() -> Self {
+        PlayerLibrary { players: HashMap::new() }
+    }
+
+    pub fn add_player(&mut self, id: String, player: PlayerDef) {
+        self.players.insert(id, player);
+    }
 }
