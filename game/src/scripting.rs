@@ -220,19 +220,20 @@ pub fn render_text(query: Query<(Entity, &TextContent, &Sprite), Added<TextConte
 }
 
 pub fn close_dialog_on_input(
-    inputs: Res<ButtonInput<KeyCode>>, 
+    inputs: Res<ButtonInput<KeyCode>>,
     query: Query<Entity, With<TextContent>>,
     mut commands: Commands,
-    mut script: ResMut<ScriptVM>,  // Add this line to access the ScriptVM resource
+    mut script: ResMut<ScriptVM>,
 ){
     if inputs.just_pressed(KeyCode::Space) {
+        let mut had_dialog = false;
         for entity in query.iter() {
             commands.entity(entity).despawn_children();
             commands.entity(entity).remove::<TextContent>();
-
+            had_dialog = true;
         }
-    if script.state == vm::interpreter::ExecutionResult::Paused {
-        script.state = script.vm.run();
+        if had_dialog && script.state == vm::interpreter::ExecutionResult::Paused {
+            script.state = script.vm.run();
         }
     }
 }

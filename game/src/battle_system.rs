@@ -170,6 +170,36 @@ pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut 
         Transform::from_xyz(-500.0, -310.0, 2.0),
         TextFont { font_size: 24.0, ..default() },
     ));
+
+    commands.spawn((
+        BattleEntity,
+        Visibility::Hidden,
+        MenuOption { index: 0 },
+        Text2d::new("Attack"),
+        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        Transform::from_xyz(-500.0, -180.0, 2.0),
+        TextFont { font_size: 24.0, ..default() },
+    ));
+
+    commands.spawn((
+        BattleEntity,
+        Visibility::Hidden,
+        MenuOption { index: 1 },
+        Text2d::new("Magic"),
+        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        Transform::from_xyz(-500.0, -210.0, 2.0),
+        TextFont { font_size: 24.0, ..default() },
+    ));
+
+    commands.spawn((
+        BattleEntity,
+        Visibility::Hidden,
+        MenuOption { index: 2 },
+        Text2d::new("Item"),
+        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        Transform::from_xyz(-500.0, -240.0, 2.0),
+        TextFont { font_size: 24.0, ..default() },
+    ));
 }
 
 #[derive(Clone)]
@@ -300,6 +330,104 @@ pub fn update_mp_text(mut player_query: Query<&BattlerStats, With<Player>>, mut 
     for stats in player_query.iter_mut() {
         for mut text in text_query.iter_mut() {
             *text = Text2d::new(format!("MP {}/{}", stats.mp, stats.max_mp));
+        }
+    }
+}
+
+#[derive(Resource)]
+pub struct BattleMenu {
+    pub selected_index: usize,
+}
+
+#[derive(Component)]
+pub struct MenuOption {
+    pub index: usize,
+}
+
+pub fn cursor_movement(input: Res<ButtonInput<KeyCode>>, mut menu: ResMut<BattleMenu>) {
+    if input.just_pressed(KeyCode::ArrowUp) {
+        menu.selected_index = (menu.selected_index + 3 - 1) % 3;
+    }
+    if input.just_pressed(KeyCode::ArrowDown) {
+        menu.selected_index = (menu.selected_index + 1) % 3;
+    }
+}
+
+pub fn update_menu_cursor(mut commands: Commands, menu: Res<BattleMenu>, mut query: Query<(Entity, &mut Visibility, &MenuOption)>) {
+    for (entity, mut visibility, option) in query.iter_mut() {
+        if option.index == menu.selected_index {
+            *visibility = Visibility::Visible;
+        } else {
+            *visibility = Visibility::Hidden;
+        }
+    }
+}
+
+pub fn draw_menu(
+    menu: Res<BattleMenu>,
+    player_query: Query<(), (With<Player>, With<ActionReady>)>,
+    mut option_query: Query<(&MenuOption, &mut Text2d, &mut TextColor, &mut Visibility)>,
+) {
+    let player_ready = player_query.iter().next().is_some();
+
+    for (option, mut text, mut color, mut visibility) in option_query.iter_mut() {
+        if !player_ready {
+            *visibility = Visibility::Hidden;
+            continue;
+        } else {
+            *visibility = Visibility::Visible;
+        }
+
+        let label = match option.index {
+            0 => "Attack",
+            1 => "Magic",
+            2 => "Item",
+            _ => "",
+        };
+
+        if option.index == menu.selected_index {
+            *color = TextColor(Color::srgb(1.0, 1.0, 0.0));
+            *text = Text2d::new(format!("> {}", label));
+        } else {
+            *color = TextColor(Color::srgb(1.0, 1.0, 1.0));
+            *text = Text2d::new(label.to_string());
+        }
+    }
+}
+
+pub fn confirm_selection(
+    input: Res<ButtonInput<KeyCode>>,
+    menu: Res<BattleMenu>,
+    mut player_query: Query<(Entity, &mut BattlerStats), (With<Player>, With<ActionReady>)>,
+    mut enemy_query: Query<&mut BattlerStats, (With<Enemy>, Without<Player>)>,
+    mut commands: Commands,
+) {
+    if input.just_pressed(KeyCode::Space) {
+        if let Some((player_entity, mut player_stats)) = player_query.iter_mut().next() {
+            let mut acted = false;
+
+            match menu.selected_index {
+                0 => { // Attack
+                    if let Some(mut enemy_stats) = enemy_query.iter_mut().next() {
+                        let damage = if player_stats.attack > enemy_stats.defense {
+                            player_stats.attack - enemy_stats.defense
+                        } else {
+                            1
+                        };
+                        enemy_stats.hp = enemy_stats.hp.saturating_sub(damage);
+                        println!("Player attacks! Enemy HP is now: {}", enemy_stats.hp);
+                        acted = true;
+                    }
+                }
+                1 => println!("Player uses Magic!"),   // not implemented — turn not consumed
+                2 => println!("Player uses Item!"),     // not implemented — turn not consumed
+                _ => {}
+            }
+
+            if acted {
+                commands.entity(player_entity).remove::<ActionReady>();
+                player_stats.atb_timer = 0.0;
+            }
         }
     }
 }
