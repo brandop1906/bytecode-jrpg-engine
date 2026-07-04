@@ -177,4 +177,50 @@ pub fn enemy_turn(mut commands: Commands, mut enemy_query: Query<(Entity, &mut B
     }
 }
 
+pub fn player_turn(mut commands: Commands, mut player_query: Query<(Entity, &mut BattlerStats), (With<Player>, With<ActionReady>, Without<Enemy>)>, 
+    mut enemy_query: Query<&mut BattlerStats, With<Enemy>>, input: Res<ButtonInput<KeyCode>>) {
+    for (player_entity, mut player_stats) in player_query.iter_mut() {
+        if input.just_pressed(KeyCode::Space) {
+            if let Ok(mut enemy_stats) = enemy_query.single_mut() {
+                let damage = if player_stats.attack > enemy_stats.defense {
+                    player_stats.attack - enemy_stats.defense
+                } else {
+                    1
+                };
+                enemy_stats.hp = enemy_stats.hp.saturating_sub(damage);
+                println!("Player attacks! Enemy HP is now: {}", enemy_stats.hp);
+            }
+            commands.entity(player_entity).remove::<ActionReady>();
+            player_stats.atb_timer = 0.0;
+        }
+    }
+}
+
+pub fn check_battle_end(mut commands: Commands, mut player_query: Query<&BattlerStats, With<Player>>, mut enemy_query: Query<&BattlerStats, With<Enemy>>, mut next_state: ResMut<NextState<GameState>>) {
+    if let Ok(player_stats) = player_query.single_mut() {
+        if player_stats.hp == 0 {
+            println!("Player has been defeated!");
+            next_state.set(GameState::Field);
+            return;
+        }
+    }
+
+    if let Ok(enemy_stats) = enemy_query.single_mut() {
+        if enemy_stats.hp == 0 {
+            println!("Enemy has been defeated!");
+            next_state.set(GameState::Field);
+            return;
+        }
+    }
+}
+
+pub fn cleanup_battle(mut commands: Commands, query: Query<Entity, With<BattleEntity>>, mut player_query: Query<&mut Visibility, With<PlayerControlled>>) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn();
+    }
+    if let Ok(mut visibility) = player_query.single_mut() {
+        *visibility = Visibility::Visible;
+    }
+}
+
 
