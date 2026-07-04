@@ -122,6 +122,7 @@ fn main() {
             close_dialog_on_input, player_interact, detection, transition, update_fade, encounter_check_system)
             .run_if(in_state(GameState::Field)))
         .add_systems(OnEnter(GameState::Battle), setup_battle)
+        .add_systems(Update, (update_atb, enemy_turn).run_if(in_state(GameState::Battle)))
         .run();
 }   
 

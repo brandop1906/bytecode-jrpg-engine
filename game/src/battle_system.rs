@@ -1,3 +1,4 @@
+use bevy::ecs::entity;
 use rand::Rng;
 use bevy::prelude::*;
 use crate::scene::*;
@@ -25,6 +26,9 @@ pub struct Enemy;
 
 #[derive(Component)]
 pub struct Player;
+
+#[derive(Component)]
+pub struct ActionReady;
 
 
 #[derive(Resource)]
@@ -146,3 +150,31 @@ impl PlayerLibrary {
         self.players.insert(id, player);
     }
 }
+
+pub fn update_atb(mut commands: Commands, mut query: Query<(Entity, &mut BattlerStats), Without<ActionReady>>, time: Res<Time>) {
+    for (entity, mut stats) in query.iter_mut() {
+        stats.atb_timer += stats.speed as f32 * time.delta_secs() * 10.0;
+        if stats.atb_timer > 100.0 {
+            stats.atb_timer = 100.0;
+            commands.entity(entity).insert(ActionReady);
+        }
+    }
+}
+
+pub fn enemy_turn(mut commands: Commands, mut enemy_query: Query<(Entity, &mut BattlerStats), (With<Enemy>, With<ActionReady>, Without<Player>)>, mut player_query: Query<&mut BattlerStats, With<Player>>) {
+    for (enemy_entity, mut enemy_stats) in enemy_query.iter_mut() {
+        if let Ok(mut player_stats) = player_query.single_mut() {
+            let damage = if enemy_stats.attack > player_stats.defense {
+                enemy_stats.attack - player_stats.defense
+            } else {
+                1
+            };
+            player_stats.hp = player_stats.hp.saturating_sub(damage);
+            println!("Enemy attacks! Player HP is now: {}", player_stats.hp);
+        }
+        commands.entity(enemy_entity).remove::<ActionReady>();
+        enemy_stats.atb_timer = 0.0;
+    }
+}
+
+
