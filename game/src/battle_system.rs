@@ -236,11 +236,7 @@ pub fn enemy_turn(
 ) {
     if let Some((enemy_entity, mut enemy_stats)) = enemy_query.iter_mut().next() {
         if let Some((mut player_stats, player_transform)) = player_query.iter_mut().next() {
-            let damage = if enemy_stats.attack > player_stats.defense {
-                enemy_stats.attack - player_stats.defense
-            } else {
-                1
-            };
+            let damage = calculate_damage(enemy_stats.attack, player_stats.defense);
             player_stats.hp = player_stats.hp.saturating_sub(damage);
             damage_writer.write(DamageEvent {
                 amount: damage,
@@ -248,25 +244,6 @@ pub fn enemy_turn(
             });
             commands.entity(enemy_entity).remove::<ActionReady>();
             enemy_stats.atb_timer = 0.0;
-        }
-    }
-}
-
-pub fn player_turn(mut commands: Commands, mut player_query: Query<(Entity, &mut BattlerStats), (With<Player>, With<ActionReady>, Without<Enemy>)>, 
-    mut enemy_query: Query<&mut BattlerStats, With<Enemy>>, input: Res<ButtonInput<KeyCode>>) {
-    for (player_entity, mut player_stats) in player_query.iter_mut() {
-        if input.just_pressed(KeyCode::Space) {
-            if let Ok(mut enemy_stats) = enemy_query.single_mut() {
-                let damage = if player_stats.attack > enemy_stats.defense {
-                    player_stats.attack - enemy_stats.defense
-                } else {
-                    1
-                };
-                enemy_stats.hp = enemy_stats.hp.saturating_sub(damage);
-                println!("Player attacks! Enemy HP is now: {}", enemy_stats.hp);
-            }
-            commands.entity(player_entity).remove::<ActionReady>();
-            player_stats.atb_timer = 0.0;
         }
     }
 }
@@ -417,11 +394,7 @@ pub fn confirm_selection(
             match menu.selected_index {
                 0 => { // Attack
                     if let Some((mut enemy_stats, enemy_transform)) = enemy_query.iter_mut().next() {
-                        let damage = if player_stats.attack > enemy_stats.defense {
-                            player_stats.attack - enemy_stats.defense
-                        } else {
-                            1
-                        };
+                        let damage = calculate_damage(player_stats.attack, enemy_stats.defense);
                         enemy_stats.hp = enemy_stats.hp.saturating_sub(damage);
                         damage_writer.write(DamageEvent {
                             amount: damage,
@@ -442,6 +415,12 @@ pub fn confirm_selection(
             }
         }
     }
+}
+
+fn calculate_damage(attack: u32, defense: u32) -> u32 {
+    let base = if attack > defense { attack - defense } else { 1 };
+    let variance = rand::thread_rng().gen_range(0.85..=1.15);
+    ((base as f32 * variance).round() as u32).max(1)
 }
 
 #[derive(Message)]

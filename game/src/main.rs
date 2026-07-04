@@ -76,7 +76,7 @@ fn main() {
             max_hp: 30,
             mp: 0,
             max_mp: 0,
-            attack: 5,
+            attack: 10,
             defense: 2,
             magic_attack: 0,
             magic_defense: 0,
