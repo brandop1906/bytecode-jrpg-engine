@@ -233,19 +233,27 @@ pub fn update_atb(mut commands: Commands, mut query: Query<(Entity, &mut Battler
     }
 }
 
-pub fn enemy_turn(mut commands: Commands, mut enemy_query: Query<(Entity, &mut BattlerStats), (With<Enemy>, With<ActionReady>, Without<Player>)>, mut player_query: Query<&mut BattlerStats, With<Player>>) {
-    for (enemy_entity, mut enemy_stats) in enemy_query.iter_mut() {
-        if let Ok(mut player_stats) = player_query.single_mut() {
+pub fn enemy_turn(
+    mut enemy_query: Query<(Entity, &mut BattlerStats), (With<Enemy>, With<ActionReady>, Without<Player>)>,
+    mut player_query: Query<(&mut BattlerStats, &Transform), With<Player>>,
+    mut damage_writer: MessageWriter<DamageEvent>,
+    mut commands: Commands,
+) {
+    if let Some((enemy_entity, mut enemy_stats)) = enemy_query.iter_mut().next() {
+        if let Some((mut player_stats, player_transform)) = player_query.iter_mut().next() {
             let damage = if enemy_stats.attack > player_stats.defense {
                 enemy_stats.attack - player_stats.defense
             } else {
                 1
             };
             player_stats.hp = player_stats.hp.saturating_sub(damage);
-            println!("Enemy attacks! Player HP is now: {}", player_stats.hp);
+            damage_writer.write(DamageEvent {
+                amount: damage,
+                position: player_transform.translation,
+            });
+            commands.entity(enemy_entity).remove::<ActionReady>();
+            enemy_stats.atb_timer = 0.0;
         }
-        commands.entity(enemy_entity).remove::<ActionReady>();
-        enemy_stats.atb_timer = 0.0;
     }
 }
 
@@ -399,7 +407,8 @@ pub fn confirm_selection(
     input: Res<ButtonInput<KeyCode>>,
     menu: Res<BattleMenu>,
     mut player_query: Query<(Entity, &mut BattlerStats), (With<Player>, With<ActionReady>)>,
-    mut enemy_query: Query<&mut BattlerStats, (With<Enemy>, Without<Player>)>,
+    mut enemy_query: Query<(&mut BattlerStats, &Transform), (With<Enemy>, Without<Player>)>, // + &Transform
+    mut damage_writer: MessageWriter<DamageEvent>, // new param
     mut commands: Commands,
 ) {
     if input.just_pressed(KeyCode::Space) {
@@ -408,19 +417,23 @@ pub fn confirm_selection(
 
             match menu.selected_index {
                 0 => { // Attack
-                    if let Some(mut enemy_stats) = enemy_query.iter_mut().next() {
+                    if let Some((mut enemy_stats, enemy_transform)) = enemy_query.iter_mut().next() {
                         let damage = if player_stats.attack > enemy_stats.defense {
                             player_stats.attack - enemy_stats.defense
                         } else {
                             1
                         };
                         enemy_stats.hp = enemy_stats.hp.saturating_sub(damage);
+                        damage_writer.write(DamageEvent {
+                            amount: damage,
+                            position: enemy_transform.translation,
+                        });
                         println!("Player attacks! Enemy HP is now: {}", enemy_stats.hp);
                         acted = true;
                     }
                 }
-                1 => println!("Player uses Magic!"),   // not implemented — turn not consumed
-                2 => println!("Player uses Item!"),     // not implemented — turn not consumed
+                1 => println!("Player uses Magic!"),
+                2 => println!("Player uses Item!"),
                 _ => {}
             }
 
@@ -428,6 +441,58 @@ pub fn confirm_selection(
                 commands.entity(player_entity).remove::<ActionReady>();
                 player_stats.atb_timer = 0.0;
             }
+        }
+    }
+}
+
+#[derive(Message)]
+pub struct DamageEvent {
+    pub amount: u32,
+    pub position: Vec3,   // where to spawn the number (the target's location)
+}
+
+#[derive(Component)]
+pub struct DamageNumber {
+    pub timer: f32,
+}
+
+pub fn spawn_damage_numbers(
+    mut damage_reader: MessageReader<DamageEvent>,
+    mut commands: Commands,
+) {
+    for event in damage_reader.read() {
+        commands.spawn((
+            BattleEntity,
+            DamageNumber { timer: 0.0 },
+            Text2d::new(format!("{}", event.amount)),
+            TextColor(Color::srgb(1.0, 1.0, 1.0)),
+            TextFont { font_size: 28.0, ..default() },
+            // spawn slightly above the target, z above other UI so it's on top
+            Transform::from_xyz(event.position.x, event.position.y + 40.0, 5.0),
+        ));
+    }
+}
+
+pub fn update_damage_numbers(
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut DamageNumber, &mut Transform, &mut TextColor)>,
+    mut commands: Commands,
+) {
+    const LIFETIME: f32 = 1.0;
+    const FLOAT_SPEED: f32 = 60.0;
+
+    for (entity, mut number, mut transform, mut color) in query.iter_mut() {
+        number.timer += time.delta_secs();
+
+        // float upward
+        transform.translation.y += FLOAT_SPEED * time.delta_secs();
+
+        // fade alpha from 1 -> 0 over the lifetime
+        let alpha = (1.0 - number.timer / LIFETIME).clamp(0.0, 1.0);
+        color.0.set_alpha(alpha);
+
+        if number.timer >= LIFETIME {
+            commands.entity(entity).despawn();
         }
     }
 }

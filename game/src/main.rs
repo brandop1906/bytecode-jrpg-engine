@@ -116,6 +116,7 @@ fn main() {
         .insert_resource(player_lib)
         .insert_resource(battle_system::EncounterTracker { danger: 0.0 })
         .insert_resource(BattleMenu { selected_index: 0 })
+        .init_resource::<Messages<DamageEvent>>()
         .insert_state(GameState::Field)
         .init_resource::<Messages<SceneChangeRequest>>()
         .add_systems(Startup, (spawn_entity, scene_startup))
@@ -125,6 +126,7 @@ fn main() {
         .add_systems(OnEnter(GameState::Battle), setup_battle)
         .add_systems(OnExit(GameState::Battle), cleanup_battle)
         .add_systems(Update, (update_atb_ui, update_atb, update_hp_text, update_mp_text, draw_menu, cursor_movement,enemy_turn, confirm_selection, check_battle_end).run_if(in_state(GameState::Battle)))
+        .add_systems(Update, (spawn_damage_numbers, update_damage_numbers).run_if(in_state(GameState::Battle)))
         .run();
 }   
 
