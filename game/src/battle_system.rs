@@ -2,25 +2,14 @@ use bevy::ecs::entity;
 use bevy::ecs::system::command;
 use rand::Rng;
 use bevy::prelude::*;
+use crate::party;
+use crate::party::*;
 use crate::scene::*;
 use crate::state::*;
+use crate::stats;
 use std::collections::HashMap;
 use crate::player::*;
-
-#[derive(Component, Clone)]
-pub struct BattlerStats {
-    pub hp: u32,
-    pub max_hp: u32,
-    pub mp: u32,
-    pub max_mp: u32,
-    pub attack: u32,
-    pub defense: u32,
-    pub magic_attack: u32,
-    pub magic_defense: u32,
-    pub speed: u32,
-    pub level: u32,
-    pub atb_timer: f32,
-}
+use crate::stats::*;
 
 #[derive(Component)]
 pub struct Enemy;
@@ -87,7 +76,7 @@ impl EnemyLibrary {
 }
 
 pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut player_query: Query<&mut Visibility, With<PlayerControlled>>,
-    enemy_lib: Res<EnemyLibrary>, player_lib: Res<PlayerLibrary>) {
+    enemy_lib: Res<EnemyLibrary>, player_lib: Res<PlayerLibrary>, party_state: Res<PartyState>) {
     
     if let Ok(mut visibility) = player_query.single_mut() {
         *visibility = Visibility::Hidden;
@@ -116,11 +105,13 @@ pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut 
         Transform::from_xyz(200.0, 0.0, 1.0),
     ));
 
-    let player = player_lib.players.get("Zane").unwrap();
+    let player = player_lib.get_player("Zane".to_string()).unwrap();
+    let mut party_stats = party_state.members[0].clone();
+    party_stats.atb_timer = 0.0;
     commands.spawn((
         BattleEntity,
         Player,
-        player.stats.clone(),
+        party_stats,
         Sprite {
             image: asset_server.load(player.sprite.clone()),
             custom_size: Some(Vec2::new(64.0, 64.0)),
@@ -221,6 +212,10 @@ impl PlayerLibrary {
     pub fn add_player(&mut self, id: String, player: PlayerDef) {
         self.players.insert(id, player);
     }
+
+    pub fn get_player(&self, id: String) -> Option<&PlayerDef> {
+        self.players.get(&id)
+    }
 }
 
 pub fn update_atb(mut commands: Commands, mut query: Query<(Entity, &mut BattlerStats), Without<ActionReady>>, time: Res<Time>) {
@@ -294,7 +289,11 @@ pub fn check_battle_end(mut commands: Commands, mut player_query: Query<&Battler
     }
 }
 
-pub fn cleanup_battle(mut commands: Commands, query: Query<Entity, With<BattleEntity>>, mut player_query: Query<&mut Visibility, With<PlayerControlled>>) {
+pub fn cleanup_battle(mut commands: Commands, query: Query<Entity, With<BattleEntity>>, mut player_query: Query<&mut Visibility, With<PlayerControlled>>, mut party_state: ResMut<PartyState>, stats: Query<&BattlerStats, With<Player>>) {
+    if let Some(current) = stats.iter().next() {
+        let mut saved = current.clone();
+        party_state.members[0] = saved;
+    }
     for entity in query.iter() {
         commands.entity(entity).despawn();
     }

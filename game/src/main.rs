@@ -4,12 +4,16 @@ use player::*;
 use scene::*;
 use state::*;
 use battle_system::*;
+use crate::stats::BattlerStats;
+use crate::party::*;
 mod scripting;
 mod walkmesh;
 mod player;
 mod scene;
 mod state;
 mod battle_system;
+mod party;
+mod stats;
 
 fn main() {
 
@@ -106,6 +110,10 @@ fn main() {
     let mut player_lib = battle_system::PlayerLibrary::new();
     player_lib.add_player("Zane".to_string(), player);
 
+    let party = PartyState {
+        members: vec![player_lib.get_player("Zane".to_string()).unwrap().stats.clone()],
+    };
+
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(ScriptVM::new(vec![], vec![]))
@@ -114,6 +122,7 @@ fn main() {
         .insert_resource(scene_lib)
         .insert_resource(enemy_lib)
         .insert_resource(player_lib)
+        .insert_resource(party)
         .insert_resource(battle_system::EncounterTracker { danger: 0.0 })
         .insert_resource(BattleMenu { selected_index: 0 })
         .init_resource::<Messages<DamageEvent>>()
