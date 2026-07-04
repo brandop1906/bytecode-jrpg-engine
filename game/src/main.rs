@@ -123,7 +123,7 @@ fn main() {
             .run_if(in_state(GameState::Field)))
         .add_systems(OnEnter(GameState::Battle), setup_battle)
         .add_systems(OnExit(GameState::Battle), cleanup_battle)
-        .add_systems(Update, (update_atb, enemy_turn, player_turn, check_battle_end).run_if(in_state(GameState::Battle)))
+        .add_systems(Update, (update_atb_ui, update_atb, update_hp_text, update_mp_text, enemy_turn, player_turn, check_battle_end).run_if(in_state(GameState::Battle)))
         .run();
 }   
 

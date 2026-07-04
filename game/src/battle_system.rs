@@ -1,4 +1,5 @@
 use bevy::ecs::entity;
+use bevy::ecs::system::command;
 use rand::Rng;
 use bevy::prelude::*;
 use crate::scene::*;
@@ -128,6 +129,47 @@ pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut 
         Transform::from_xyz(-200.0, 0.0, 1.0),
     ));
 
+    commands.spawn((
+        BattleEntity,
+        PlayerAtbUi {
+            left_edge_x: 450.0,
+            full_width: 100.0,
+        },
+        Sprite {
+            color: Color::srgb(1.0, 0.5, 0.5),
+            custom_size: Some(Vec2::new(100.0, 20.0)),
+            ..default()
+        },
+        Transform::from_xyz(500.0, -280.0, 2.1),
+    ));
+
+    commands.spawn((
+        BattleEntity,
+        Sprite {
+            color: Color::srgb(0.3, 0.3, 0.3),
+            custom_size: Some(Vec2::new(100.0, 20.0)),
+            ..default()
+        },
+        Transform::from_xyz(500.0, -280.0, 2.0),
+    ));
+
+    commands.spawn((
+        BattleEntity,
+        HpText,
+        Text2d::new("HP --/--"),
+        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        Transform::from_xyz(-500.0, -280.0, 2.0),
+        TextFont { font_size: 24.0, ..default() },
+    ));
+
+    commands.spawn((
+        BattleEntity,
+        MpText,
+        Text2d::new("MP --/--"),
+        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        Transform::from_xyz(-500.0, -310.0, 2.0),
+        TextFont { font_size: 24.0, ..default() },
+    ));
 }
 
 #[derive(Clone)]
@@ -224,3 +266,40 @@ pub fn cleanup_battle(mut commands: Commands, query: Query<Entity, With<BattleEn
 }
 
 
+#[derive(Component)]
+pub struct PlayerAtbUi {
+    pub left_edge_x: f32,
+    pub full_width: f32,
+}
+
+pub fn update_atb_ui(mut query: Query<&BattlerStats, With<Player>>, mut ui_query: Query<(&mut Transform, &PlayerAtbUi)>) {
+    for player_stats in query.iter() {
+        let fill_ratio = player_stats.atb_timer / 100.0;
+        for (mut transform, atb_ui) in ui_query.iter_mut() {
+            transform.scale.x = fill_ratio;
+            transform.translation.x = atb_ui.left_edge_x + (fill_ratio * atb_ui.full_width) / 2.0;
+        }
+    }
+}
+
+#[derive(Component)]
+pub struct HpText;
+
+#[derive(Component)]
+pub struct MpText;
+
+pub fn update_hp_text(mut player_query: Query<&BattlerStats, With<Player>>, mut text_query: Query<&mut Text2d, With<HpText> >) {
+    for stats in player_query.iter_mut() {
+        for mut text in text_query.iter_mut() {
+            *text = Text2d::new(format!("HP {}/{}", stats.hp, stats.max_hp));
+        }
+    }
+}
+
+pub fn update_mp_text(mut player_query: Query<&BattlerStats, With<Player>>, mut text_query: Query<&mut Text2d, With<MpText> >) {
+    for stats in player_query.iter_mut() {
+        for mut text in text_query.iter_mut() {
+            *text = Text2d::new(format!("MP {}/{}", stats.mp, stats.max_mp));
+        }
+    }
+}
