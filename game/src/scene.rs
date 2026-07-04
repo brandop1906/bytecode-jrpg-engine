@@ -23,6 +23,9 @@ impl SceneLibrary {
     pub fn get_current_scene(&self) -> Option<&SceneDef> {
         self.scenes.get(&self.current_scene)
     }
+    pub fn get_scene(&self, scene_id: &str) -> Option<&SceneDef> {
+        self.scenes.get(scene_id)
+    }
     pub fn set_current_scene(&mut self, scene_id: String) {
         if self.scenes.contains_key(&scene_id) {
             self.current_scene = scene_id;
@@ -32,8 +35,8 @@ impl SceneLibrary {
 
 #[derive(Message)]
 pub struct SceneChangeRequest {
-    scene_id: String,
-    player_pos: Vec2,
+    pub scene_id: String,
+    pub player_pos: Vec2,
 }
 
 #[derive(Clone)]

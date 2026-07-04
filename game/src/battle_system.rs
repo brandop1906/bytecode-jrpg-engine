@@ -307,7 +307,7 @@ pub fn check_battle_end(mut commands: Commands, mut player_query: Query<&Battler
     if let Ok(player_stats) = player_query.single_mut() {
         if player_stats.hp == 0 {
             println!("Player has been defeated!");
-            next_state.set(GameState::Field);
+            next_state.set(GameState::GameOver);
             return;
         }
     }
@@ -539,3 +539,71 @@ pub fn update_damage_numbers(
         }
     }
 }
+
+#[derive(Component)]
+pub struct GameOverScreen;
+
+pub fn setup_game_over(mut commands: Commands) {
+    // Black full-screen overlay
+    commands.spawn((
+        GameOverScreen,
+        Sprite {
+            color: Color::srgb(0.0, 0.0, 0.0),
+            custom_size: Some(Vec2::new(2000.0, 2000.0)), // cover whole screen
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, 10.0), // high z, on top of everything
+    ));
+    // "GAME OVER" text
+    commands.spawn((
+        GameOverScreen,
+        Text2d::new("GAME OVER"),
+        TextColor(Color::srgb(1.0, 0.0, 0.0)),
+        TextFont { font_size: 64.0, ..default() },
+        Transform::from_xyz(0.0, 0.0, 11.0),
+    ));
+    // prompt
+    commands.spawn((
+        GameOverScreen,
+        Text2d::new("Press Space to continue"),
+        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        TextFont { font_size: 24.0, ..default() },
+        Transform::from_xyz(0.0, -60.0, 11.0),
+    ));
+}
+
+pub fn game_over_input(
+    input: Res<ButtonInput<KeyCode>>,
+    mut party_state: ResMut<PartyState>,
+    scene_lib: Res<SceneLibrary>,
+    mut scene_change: MessageWriter<SceneChangeRequest>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if input.just_pressed(KeyCode::Space) {
+        // Revive the party to full
+        if let Some(member) = party_state.members.get_mut(0) {
+            member.hp = member.max_hp;
+            member.mp = member.max_mp;
+            member.atb_timer = 0.0;
+        }
+        // Look up town's spawn from the scene library (single source of truth)
+        let spawn_pos = scene_lib
+            .get_scene("town")               // adjust to your actual getter name
+            .map(|scene| scene.default_player_pos)
+            .unwrap_or(Vec2::ZERO);          // fallback if town isn't found
+
+        scene_change.write(SceneChangeRequest {
+            scene_id: "town".to_string(),
+            player_pos: spawn_pos,
+        });
+        next_state.set(GameState::Field);
+    }
+}
+
+pub fn cleanup_game_over(mut commands: Commands, query: Query<Entity, With<GameOverScreen>>) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn();
+    }
+}
+
+

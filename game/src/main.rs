@@ -76,7 +76,7 @@ fn main() {
             max_hp: 30,
             mp: 0,
             max_mp: 0,
-            attack: 10,
+            attack: 50,
             defense: 2,
             magic_attack: 0,
             magic_defense: 0,
@@ -136,6 +136,9 @@ fn main() {
         .add_systems(OnExit(GameState::Battle), cleanup_battle)
         .add_systems(Update, (update_atb_ui, update_atb, update_hp_text, update_mp_text, draw_menu, cursor_movement,enemy_turn, confirm_selection, check_battle_end).run_if(in_state(GameState::Battle)))
         .add_systems(Update, (spawn_damage_numbers, update_damage_numbers).run_if(in_state(GameState::Battle)))
+        .add_systems(OnEnter(GameState::GameOver), setup_game_over)
+        .add_systems(Update, game_over_input.run_if(in_state(GameState::GameOver)))
+        .add_systems(OnExit(GameState::GameOver), cleanup_game_over)
         .run();
 }   
 
@@ -156,4 +159,10 @@ pub fn spawn_entity(mut commands: Commands,  asset_server: Res<AssetServer>) {
         Solid, // Add the Solid component to mark this entity as solid. This can be used for collision detection or other purposes.
         FieldEntityId { id: 0 } // Add the FieldEntityId component with an ID of 0. This can be used to identify entities within a game field or similar structure.
     ));
+}
+
+pub fn print_hp(party: Res<PartyState>) {
+    for member in &party.members {
+        println!("HP: {}/{}",member.hp, member.max_hp);
+    }
 }
