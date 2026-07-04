@@ -76,14 +76,16 @@ fn main() {
             max_hp: 30,
             mp: 0,
             max_mp: 0,
-            attack: 50,
+            attack: 10,
             defense: 2,
             magic_attack: 0,
             magic_defense: 0,
             speed: 3,
             level: 1,
             atb_timer: 0.0,
+            exp: 0,
         },
+        exp_reward: 20,
     };
 
     let mut enemy_lib = battle_system::EnemyLibrary::new();
@@ -97,13 +99,14 @@ fn main() {
             max_hp: 100,
             mp: 50,
             max_mp: 50,
-            attack: 10,
+            attack: 100,
             defense: 5,
             magic_attack: 5,
             magic_defense: 3,
             speed: 5,
             level: 1,
             atb_timer: 0.0,
+            exp: 0,
         },
     };
 
@@ -123,6 +126,7 @@ fn main() {
         .insert_resource(enemy_lib)
         .insert_resource(player_lib)
         .insert_resource(party)
+        .init_resource::<PendingReward>()
         .insert_resource(battle_system::EncounterTracker { danger: 0.0 })
         .insert_resource(BattleMenu { selected_index: 0 })
         .init_resource::<Messages<DamageEvent>>()
@@ -132,6 +136,7 @@ fn main() {
         .add_systems(Update, (move_player, process_vm_commands, render_text, 
             close_dialog_on_input, player_interact, detection, transition, update_fade, encounter_check_system)
             .run_if(in_state(GameState::Field)))
+        .add_systems(Update, update_battle_end_fade)
         .add_systems(OnEnter(GameState::Battle), setup_battle)
         .add_systems(OnExit(GameState::Battle), cleanup_battle)
         .add_systems(Update, (update_atb_ui, update_atb, update_hp_text, update_mp_text, draw_menu, cursor_movement,enemy_turn, confirm_selection, check_battle_end).run_if(in_state(GameState::Battle)))
@@ -139,6 +144,9 @@ fn main() {
         .add_systems(OnEnter(GameState::GameOver), setup_game_over)
         .add_systems(Update, game_over_input.run_if(in_state(GameState::GameOver)))
         .add_systems(OnExit(GameState::GameOver), cleanup_game_over)
+        .add_systems(OnEnter(GameState::Victory), setup_victory)
+        .add_systems(Update, victory_input.run_if(in_state(GameState::Victory)))
+        .add_systems(OnExit(GameState::Victory), cleanup_victory)
         .run();
 }   
 

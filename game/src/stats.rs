@@ -13,4 +13,6 @@ pub struct BattlerStats {
     pub speed: u32,
     pub level: u32,
     pub atb_timer: f32,
+    pub exp: u32,
+    
 }

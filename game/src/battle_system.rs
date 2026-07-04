@@ -10,6 +10,7 @@ use crate::stats;
 use std::collections::HashMap;
 use crate::player::*;
 use crate::stats::*;
+use crate::scene::FadePhase;
 
 #[derive(Component)]
 pub struct Enemy;
@@ -58,6 +59,15 @@ pub struct EnemyDef {
     pub name: String,
     pub sprite: String,
     pub stats: BattlerStats,
+    pub exp_reward: u32,
+}
+
+#[derive(Component)]
+pub struct ExpReward(pub u32);
+
+#[derive(Resource, Default)]
+pub struct PendingReward {
+    pub exp: u32,
 }
 
 #[derive(Resource)]
@@ -96,6 +106,7 @@ pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut 
     commands.spawn((
         BattleEntity,
         Enemy,
+        ExpReward(enemy.exp_reward),
         enemy.stats.clone(),
         Sprite {
             image: asset_server.load(enemy.sprite.clone()),
@@ -303,20 +314,83 @@ pub fn enemy_turn(
     }
 }
 
-pub fn check_battle_end(mut commands: Commands, mut player_query: Query<&BattlerStats, With<Player>>, mut enemy_query: Query<&BattlerStats, With<Enemy>>, mut next_state: ResMut<NextState<GameState>>) {
-    if let Ok(player_stats) = player_query.single_mut() {
+pub fn check_battle_end(
+    mut commands: Commands,
+    player_query: Query<&BattlerStats, With<Player>>,
+    enemy_query: Query<(&BattlerStats, &ExpReward), With<Enemy>>,
+    overlay_query: Query<&BattleEndOverlay>,   // to guard against spawning twice
+    mut pending_reward: ResMut<PendingReward>,
+) {
+    // If a fade is already underway, do nothing.
+    if !overlay_query.is_empty() {
+        return;
+    }
+
+    let mut outcome = None;
+
+    if let Ok(player_stats) = player_query.single() {
         if player_stats.hp == 0 {
-            println!("Player has been defeated!");
-            next_state.set(GameState::GameOver);
-            return;
+            outcome = Some(BattleOutcome::GameOver);
+        }
+    }
+    // only check enemy if player isn't already dead
+    if outcome.is_none() {
+        if let Ok((enemy_stats, exp_reward)) = enemy_query.single() {
+            if enemy_stats.hp == 0 {
+                pending_reward.exp = exp_reward.0;
+                outcome = Some(BattleOutcome::Victory);
+            }
         }
     }
 
-    if let Ok(enemy_stats) = enemy_query.single_mut() {
-        if enemy_stats.hp == 0 {
-            println!("Enemy has been defeated!");
-            next_state.set(GameState::Field);
-            return;
+    if let Some(outcome) = outcome {
+        commands.spawn((
+            BattleEndOverlay {
+                phase: FadePhase::FadingOut,
+                timer: 0.0,
+                outcome,
+            },
+            Sprite {
+                color: Color::srgba(0.0, 0.0, 0.0, 0.0), // start transparent
+                custom_size: Some(Vec2::new(2000.0, 2000.0)),
+                ..default()
+            },
+            Transform::from_xyz(0.0, 0.0, 10.0),
+            // NOT BattleEntity — must survive cleanup_battle
+        ));
+    }
+}
+
+pub fn update_battle_end_fade(
+    mut overlay_query: Query<(&mut BattleEndOverlay, &mut Sprite)>,
+    time: Res<Time>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    const BACKDROP_ALPHA: f32 = 0.9;  // fade-in settles here (dark backdrop, not clear)
+
+    for (mut overlay, mut sprite) in &mut overlay_query {
+        match overlay.phase {
+            FadePhase::FadingOut => {
+                overlay.timer += time.delta_secs();
+                let alpha = (overlay.timer / 1.0).clamp(0.0, 1.0);
+                sprite.color = Color::srgba(0.0, 0.0, 0.0, alpha);
+                if alpha >= 1.0 {
+                    // fully black — NOW change state
+                    match overlay.outcome {
+                        BattleOutcome::Victory => next_state.set(GameState::Victory),
+                        BattleOutcome::GameOver => next_state.set(GameState::GameOver),
+                    }
+                    overlay.phase = FadePhase::FadingIn;
+                    overlay.timer = 0.0;
+                }
+            }
+            FadePhase::FadingIn => {
+                let alpha = (1.0 - (overlay.timer / 1.0)).clamp(BACKDROP_ALPHA, 1.0);
+                sprite.color = Color::srgba(0.0, 0.0, 0.0, alpha);
+                if alpha > BACKDROP_ALPHA {
+                    overlay.timer += time.delta_secs();   // only advance until settled
+                }
+            }
         }
     }
 }
@@ -607,3 +681,110 @@ pub fn cleanup_game_over(mut commands: Commands, query: Query<Entity, With<GameO
 }
 
 
+#[derive(Component)]
+pub struct VictoryScreen;
+
+pub fn setup_victory(
+    mut commands: Commands,
+    mut party_state: ResMut<PartyState>,
+    pending_reward: Res<PendingReward>,   // was: enemy_query
+) {
+    let reward = pending_reward.exp;      // read the stashed value
+
+    let mut levels_gained = 0;
+    if let Some(member) = party_state.members.get_mut(0) {
+        member.exp += reward;
+        while member.exp >= member.level * 50 {
+            member.exp -= member.level * 50;
+            member.level += 1;
+            member.max_hp += 20;
+            member.hp = member.max_hp;
+            member.attack += 3;
+            member.defense += 2;
+            member.max_mp += 5;
+            member.mp = member.max_mp;
+            levels_gained += 1;
+        }
+    }
+
+    // --- results screen below ---
+
+    commands.spawn((
+        VictoryScreen,
+        Sprite {
+            color: Color::srgb(0.0, 0.0, 0.2),   // dark blue instead of black, for a "win" feel
+            custom_size: Some(Vec2::new(2000.0, 2000.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, 10.0),
+    ));
+    // "VICTORY!" title
+    commands.spawn((
+        VictoryScreen,
+        Text2d::new("VICTORY!"),
+        TextColor(Color::srgb(1.0, 1.0, 0.3)),
+        TextFont { font_size: 64.0, ..default() },
+        Transform::from_xyz(0.0, 60.0, 11.0),
+    ));
+    // EXP line
+    commands.spawn((
+        VictoryScreen,
+        Text2d::new(format!("Gained {} EXP", reward)),
+        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        TextFont { font_size: 28.0, ..default() },
+        Transform::from_xyz(0.0, 0.0, 11.0),
+    ));
+
+    if levels_gained > 0 {
+        commands.spawn((
+            VictoryScreen,
+            Text2d::new(format!("Level up! Now level {}", party_state.members[0].level)),
+            TextColor(Color::srgb(0.3, 1.0, 0.3)),
+            TextFont { font_size: 28.0, ..default() },
+            Transform::from_xyz(0.0, -40.0, 11.0),
+        ));
+    }
+    // prompt
+    commands.spawn((
+        VictoryScreen,
+        Text2d::new("Press Space to continue"),
+        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        TextFont { font_size: 24.0, ..default() },
+        Transform::from_xyz(0.0, -100.0, 11.0),
+    ));
+}
+
+pub fn victory_input(
+    input: Res<ButtonInput<KeyCode>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if input.just_pressed(KeyCode::Space) {
+        next_state.set(GameState::Field);
+    }
+}
+
+pub fn cleanup_victory(
+    mut commands: Commands,
+    query: Query<Entity, With<VictoryScreen>>,
+    overlay_query: Query<Entity, With<BattleEndOverlay>>,   // add
+) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn();
+    }
+    for entity in overlay_query.iter() {   // add
+        commands.entity(entity).despawn();
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum BattleOutcome {
+    Victory,
+    GameOver,
+}
+
+#[derive(Component)]
+pub struct BattleEndOverlay {
+    pub phase: FadePhase,
+    pub timer: f32,
+    pub outcome: BattleOutcome,
+}

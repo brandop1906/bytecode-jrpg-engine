@@ -177,6 +177,7 @@ pub struct TransitionOverlay {
     pub player_pos: Vec2, 
 }
 
+#[derive(Clone, Copy, PartialEq)]
 pub enum FadePhase {
     FadingOut,
     FadingIn,
