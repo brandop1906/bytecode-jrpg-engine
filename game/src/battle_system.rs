@@ -76,7 +76,7 @@ impl EnemyLibrary {
 }
 
 pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut player_query: Query<&mut Visibility, With<PlayerControlled>>,
-    enemy_lib: Res<EnemyLibrary>, player_lib: Res<PlayerLibrary>, party_state: Res<PartyState>) {
+    enemy_lib: Res<EnemyLibrary>, player_lib: Res<PlayerLibrary>, party_state: Res<PartyState>, window_query: Query<&Window>) {
     
     if let Ok(mut visibility) = player_query.single_mut() {
         *visibility = Visibility::Hidden;
@@ -168,7 +168,7 @@ pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut 
         MenuOption { index: 0 },
         Text2d::new("Attack"),
         TextColor(Color::srgb(1.0, 1.0, 1.0)),
-        Transform::from_xyz(-500.0, -180.0, 2.0),
+        Transform::from_xyz(-150.0, -270.0, 2.0),
         TextFont { font_size: 24.0, ..default() },
     ));
 
@@ -178,7 +178,7 @@ pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut 
         MenuOption { index: 1 },
         Text2d::new("Magic"),
         TextColor(Color::srgb(1.0, 1.0, 1.0)),
-        Transform::from_xyz(-500.0, -210.0, 2.0),
+        Transform::from_xyz(-150.0, -300.0, 2.0),
         TextFont { font_size: 24.0, ..default() },
     ));
 
@@ -188,8 +188,63 @@ pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut 
         MenuOption { index: 2 },
         Text2d::new("Item"),
         TextColor(Color::srgb(1.0, 1.0, 1.0)),
-        Transform::from_xyz(-500.0, -240.0, 2.0),
+        Transform::from_xyz(-150.0, -330.0, 2.0),
         TextFont { font_size: 24.0, ..default() },
+    ));
+
+
+    // Get the screen width from the primary window (auto-fits any resolution)
+    let screen_width = window_query
+        .single()
+        .map(|w| w.width())
+        .unwrap_or(1280.0);          // fallback if the window isn't found
+
+    let bar_width = screen_width + 20.0;   // slight overshoot so it reaches both edges
+    let bar_y = -290.0;                     // bottom of screen
+    let bar_height = 140.0;
+    commands.spawn((
+        BattleEntity,
+        Sprite {
+            color: Color::srgb(0.4, 0.6, 0.9),
+            custom_size: Some(Vec2::new(bar_width, bar_height)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, bar_y, 1.5),
+    ));
+    // Fill (dark navy), inset vertically only so a top/bottom border shows
+    commands.spawn((
+        BattleEntity,
+        Sprite {
+            color: Color::srgb(0.05, 0.1, 0.35),
+            custom_size: Some(Vec2::new(bar_width, bar_height - 8.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, bar_y, 1.6),
+    ));
+
+    // --- Command menu window: border (lighter blue) ---
+    commands.spawn((
+        BattleEntity,
+        MenuWindow,
+        Visibility::Hidden,
+        Sprite {
+            color: Color::srgb(0.4, 0.6, 0.9),
+            custom_size: Some(Vec2::new(160.0, 110.0)),
+            ..default()
+        },
+        Transform::from_xyz(-150.0, -300.0, 1.7),
+    ));
+    // --- Command menu window: fill (dark navy, inset for a border) ---
+    commands.spawn((
+        BattleEntity,
+        MenuWindow,
+        Visibility::Hidden,
+        Sprite {
+            color: Color::srgb(0.05, 0.1, 0.35),
+            custom_size: Some(Vec2::new(152.0, 102.0)),
+            ..default()
+        },
+        Transform::from_xyz(-150.0, -300.0, 1.8),
     ));
 }
 
@@ -328,6 +383,9 @@ pub struct MenuOption {
     pub index: usize,
 }
 
+#[derive(Component)]
+pub struct MenuWindow;
+
 pub fn cursor_movement(input: Res<ButtonInput<KeyCode>>, mut menu: ResMut<BattleMenu>) {
     if input.just_pressed(KeyCode::ArrowUp) {
         menu.selected_index = (menu.selected_index + 3 - 1) % 3;
@@ -350,9 +408,15 @@ pub fn update_menu_cursor(mut commands: Commands, menu: Res<BattleMenu>, mut que
 pub fn draw_menu(
     menu: Res<BattleMenu>,
     player_query: Query<(), (With<Player>, With<ActionReady>)>,
-    mut option_query: Query<(&MenuOption, &mut Text2d, &mut TextColor, &mut Visibility)>,
+    mut option_query: Query<(&MenuOption, &mut Text2d, &mut TextColor, &mut Visibility), Without<MenuWindow>>,
+    mut window_query: Query<&mut Visibility, With<MenuWindow>>,
 ) {
     let player_ready = player_query.iter().next().is_some();
+
+    // Toggle the command window panel with the same readiness
+    for mut visibility in window_query.iter_mut() {
+        *visibility = if player_ready { Visibility::Visible } else { Visibility::Hidden };
+    }
 
     for (option, mut text, mut color, mut visibility) in option_query.iter_mut() {
         if !player_ready {
@@ -378,6 +442,7 @@ pub fn draw_menu(
         }
     }
 }
+
 
 pub fn confirm_selection(
     input: Res<ButtonInput<KeyCode>>,
