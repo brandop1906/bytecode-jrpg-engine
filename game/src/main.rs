@@ -136,7 +136,7 @@ fn main() {
         .add_systems(Update, (move_player, process_vm_commands, render_text, 
             close_dialog_on_input, player_interact, detection, transition, update_fade, encounter_check_system)
             .run_if(in_state(GameState::Field)))
-        .add_systems(Update, update_battle_end_fade)
+        .add_systems(Update, (update_battle_start_fade, update_battle_end_fade))
         .add_systems(OnEnter(GameState::Battle), setup_battle)
         .add_systems(OnExit(GameState::Battle), cleanup_battle)
         .add_systems(Update, (update_atb_ui, update_atb, update_hp_text, update_mp_text, draw_menu, cursor_movement,enemy_turn, confirm_selection, check_battle_end).run_if(in_state(GameState::Battle)))

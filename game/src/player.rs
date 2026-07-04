@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use crate::scripting::*;
 use crate::walkmesh;
 use crate::scene::TransitionOverlay;
+use crate::battle_system::BattleStartOverlay;
 
 #[derive(Component)]
 pub struct PlayerControlled;
@@ -15,13 +16,17 @@ pub struct Movement
 
     pub fn move_player(mut query: Query<(&mut Transform, &Movement, &mut Sprite)>, window_query: Query<&WindowId>, transition_query: Query<&TransitionOverlay>, 
     input: Res<ButtonInput<KeyCode>>, time: Res<Time>, walk_area: Res<walkmesh::WalkableArea>, 
-    player_images: Res<PlayerImages>) {
+    player_images: Res<PlayerImages>, battle_start_query: Query<&BattleStartOverlay>) {
         if !window_query.is_empty() {
             return;
         }
         if !transition_query.is_empty() {
             return;
         }
+        if !battle_start_query.is_empty() {
+            return;
+        }
+
         for (mut transform, movement, mut sprite) in query.iter_mut() {
             let mut direction = Vec2::ZERO;
             if input.pressed(KeyCode::ArrowLeft) || input.pressed(KeyCode::KeyA) {

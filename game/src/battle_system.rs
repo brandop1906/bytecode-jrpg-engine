@@ -29,9 +29,17 @@ pub struct EncounterTracker {
 
 pub fn encounter_check_system(
     mut encounter_tracker: ResMut<EncounterTracker>,
-    time: Res<Time>, player_moving: Res<ButtonInput<KeyCode>>,
-    current_scene: Res<SceneLibrary>, mut next_state: ResMut<NextState<GameState>>,
+    time: Res<Time>,
+    player_moving: Res<ButtonInput<KeyCode>>,
+    current_scene: Res<SceneLibrary>,
+    overlay_query: Query<&BattleStartOverlay>,   // guard: don't spawn twice
+    mut commands: Commands,                        // to spawn the overlay
 ) {
+    // If a battle-start fade is already underway, do nothing.
+    if !overlay_query.is_empty() {
+        return;
+    }
+
     let mut rng = rand::thread_rng();
     if player_moving.pressed(KeyCode::ArrowLeft) || player_moving.pressed(KeyCode::ArrowRight) ||
        player_moving.pressed(KeyCode::ArrowUp) || player_moving.pressed(KeyCode::ArrowDown) ||
@@ -43,9 +51,21 @@ pub fn encounter_check_system(
                 let roll: f32 = rng.gen_range(0.0..1.0);
                 encounter_tracker.danger = 0.0;
                 if roll < 0.9 {
-                    println!("Encounter triggered! Transitioning to battle state.");
-                    next_state.set(GameState::Battle);
-                } 
+                    println!("Encounter triggered! Fading to battle.");
+                    commands.spawn((
+                        BattleStartOverlay {
+                            phase: FadePhase::FadingOut,
+                            timer: 0.0,
+                        },
+                        Sprite {
+                            color: Color::srgba(0.0, 0.0, 0.0, 0.0), // start transparent
+                            custom_size: Some(Vec2::new(2000.0, 2000.0)),
+                            ..default()
+                        },
+                        Transform::from_xyz(0.0, 0.0, 10.0),
+                        // NOT SceneEntity — must survive the Field→Battle transition
+                    ));
+                }
             }
         }
     }
@@ -299,7 +319,12 @@ pub fn enemy_turn(
     mut player_query: Query<(&mut BattlerStats, &Transform), With<Player>>,
     mut damage_writer: MessageWriter<DamageEvent>,
     mut commands: Commands,
+    battle_end_query: Query<&BattleEndOverlay>,
 ) {
+    if !battle_end_query.is_empty() {
+        return;
+    }
+
     if let Some((enemy_entity, mut enemy_stats)) = enemy_query.iter_mut().next() {
         if let Some((mut player_stats, player_transform)) = player_query.iter_mut().next() {
             let damage = calculate_damage(enemy_stats.attack, player_stats.defense);
@@ -415,7 +440,10 @@ pub struct PlayerAtbUi {
     pub full_width: f32,
 }
 
-pub fn update_atb_ui(mut query: Query<&BattlerStats, With<Player>>, mut ui_query: Query<(&mut Transform, &PlayerAtbUi)>) {
+pub fn update_atb_ui(mut query: Query<&BattlerStats, With<Player>>, mut ui_query: Query<(&mut Transform, &PlayerAtbUi)>, battle_end_query: Query<&BattleEndOverlay>,) {
+    if !battle_end_query.is_empty() {
+        return;
+    }
     for player_stats in query.iter() {
         let fill_ratio = player_stats.atb_timer / 100.0;
         for (mut transform, atb_ui) in ui_query.iter_mut() {
@@ -525,7 +553,12 @@ pub fn confirm_selection(
     mut enemy_query: Query<(&mut BattlerStats, &Transform), (With<Enemy>, Without<Player>)>, // + &Transform
     mut damage_writer: MessageWriter<DamageEvent>, // new param
     mut commands: Commands,
+    battle_end_query: Query<&BattleEndOverlay>,
 ) {
+    if !battle_end_query.is_empty() {
+        return;
+    }
+
     if input.just_pressed(KeyCode::Space) {
         if let Some((player_entity, mut player_stats)) = player_query.iter_mut().next() {
             let mut acted = false;
@@ -787,4 +820,42 @@ pub struct BattleEndOverlay {
     pub phase: FadePhase,
     pub timer: f32,
     pub outcome: BattleOutcome,
+}
+
+#[derive(Component)]
+pub struct BattleStartOverlay {
+    pub phase: FadePhase,
+    pub timer: f32,
+}
+
+pub fn update_battle_start_fade(
+    mut overlay_query: Query<(Entity, &mut BattleStartOverlay, &mut Sprite)>,
+    time: Res<Time>,
+    mut next_state: ResMut<NextState<GameState>>,
+    mut commands: Commands,
+) {
+    const FADE_TIME: f32 = 0.5;  // snappy
+
+    for (entity, mut overlay, mut sprite) in &mut overlay_query {
+        match overlay.phase {
+            FadePhase::FadingOut => {
+                overlay.timer += time.delta_secs();
+                let alpha = (overlay.timer / FADE_TIME).clamp(0.0, 1.0);
+                sprite.color = Color::srgba(0.0, 0.0, 0.0, alpha);
+                if alpha >= 1.0 {
+                    next_state.set(GameState::Battle);   // switch under cover of black
+                    overlay.phase = FadePhase::FadingIn;
+                    overlay.timer = 0.0;
+                }
+            }
+            FadePhase::FadingIn => {
+                overlay.timer += time.delta_secs();
+                let alpha = (1.0 - (overlay.timer / FADE_TIME)).clamp(0.0, 1.0);
+                sprite.color = Color::srgba(0.0, 0.0, 0.0, alpha);
+                if alpha <= 0.0 {
+                    commands.entity(entity).despawn();   // fully clear — remove it
+                }
+            }
+        }
+    }
 }
