@@ -6,6 +6,7 @@ use state::*;
 use battle_system::*;
 use crate::stats::BattlerStats;
 use crate::party::*;
+use crate::spells::*;
 mod scripting;
 mod walkmesh;
 mod player;
@@ -14,6 +15,7 @@ mod state;
 mod battle_system;
 mod party;
 mod stats;
+mod spells;
 
 fn main() {
 
@@ -113,6 +115,20 @@ fn main() {
     let mut player_lib = battle_system::PlayerLibrary::new();
     player_lib.add_player("Zane".to_string(), player);
 
+    let mut spell_lib = SpellLibrary::new();
+    spell_lib.add_spell("Fire".to_string(), SpellDef {
+        name: "Fire".to_string(),
+        mp_cost: 10,
+        power: 20,
+        magic_type: SpellType::Fire,
+    });
+    spell_lib.add_spell("Ice".to_string(), SpellDef {
+        name: "Ice".to_string(),
+        mp_cost: 8,
+        power: 15,
+        magic_type: SpellType::Ice,
+    });
+
     let party = PartyState {
         members: vec![player_lib.get_player("Zane".to_string()).unwrap().stats.clone()],
     };
@@ -125,10 +141,12 @@ fn main() {
         .insert_resource(scene_lib)
         .insert_resource(enemy_lib)
         .insert_resource(player_lib)
+        .insert_resource(spell_lib)
         .insert_resource(party)
         .init_resource::<PendingReward>()
         .insert_resource(battle_system::EncounterTracker { danger: 0.0 })
-        .insert_resource(BattleMenu { selected_index: 0 })
+        .insert_resource(BattleMenu { layer: MenuLayer::Command, selected_index: 0, selected_spell_index: 0 })
+        .insert_resource(KnownSpells { spells: vec!["Fire".to_string(), "Ice".to_string()] })
         .init_resource::<Messages<DamageEvent>>()
         .insert_state(GameState::Field)
         .init_resource::<Messages<SceneChangeRequest>>()
@@ -139,8 +157,15 @@ fn main() {
         .add_systems(Update, (update_battle_start_fade, update_battle_end_fade))
         .add_systems(OnEnter(GameState::Battle), setup_battle)
         .add_systems(OnExit(GameState::Battle), cleanup_battle)
-        .add_systems(Update, (update_atb_ui, update_atb, update_hp_text, update_mp_text, draw_menu, cursor_movement,enemy_turn, confirm_selection, check_battle_end).run_if(in_state(GameState::Battle)))
+        .add_systems(Update, (update_atb_ui, update_atb, update_hp_text, update_mp_text, draw_menu, cursor_movement,enemy_turn, check_battle_end).run_if(in_state(GameState::Battle)))
         .add_systems(Update, (spawn_damage_numbers, update_damage_numbers).run_if(in_state(GameState::Battle)))
+        .add_systems(Update, (
+            spell_cursor_movement,
+            confirm_selection,
+            spell_confirm,
+            draw_spell_menu,
+            spell_cancel,
+        ).chain().run_if(in_state(GameState::Battle)))
         .add_systems(OnEnter(GameState::GameOver), setup_game_over)
         .add_systems(Update, game_over_input.run_if(in_state(GameState::GameOver)))
         .add_systems(OnExit(GameState::GameOver), cleanup_game_over)

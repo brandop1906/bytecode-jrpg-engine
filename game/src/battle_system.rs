@@ -1,5 +1,6 @@
 use bevy::ecs::entity;
 use bevy::ecs::system::command;
+use bevy::render::extract_component::ExtractComponent;
 use rand::Rng;
 use bevy::prelude::*;
 use crate::party;
@@ -11,6 +12,7 @@ use std::collections::HashMap;
 use crate::player::*;
 use crate::stats::*;
 use crate::scene::FadePhase;
+use crate::spells::*;
 
 #[derive(Component)]
 pub struct Enemy;
@@ -106,7 +108,7 @@ impl EnemyLibrary {
 }
 
 pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut player_query: Query<&mut Visibility, With<PlayerControlled>>,
-    enemy_lib: Res<EnemyLibrary>, player_lib: Res<PlayerLibrary>, party_state: Res<PartyState>, window_query: Query<&Window>) {
+    enemy_lib: Res<EnemyLibrary>, player_lib: Res<PlayerLibrary>, party_state: Res<PartyState>, window_query: Query<&Window>, known: Res<KnownSpells>) {
     
     if let Ok(mut visibility) = player_query.single_mut() {
         *visibility = Visibility::Hidden;
@@ -222,6 +224,18 @@ pub fn setup_battle(mut commands: Commands, asset_server: Res<AssetServer>, mut 
         Transform::from_xyz(-150.0, -330.0, 2.0),
         TextFont { font_size: 24.0, ..default() },
     ));
+
+    for (i, _spell_id) in known.spells.iter().enumerate() {
+    commands.spawn((
+        BattleEntity,
+        Visibility::Hidden,
+        SpellOption { index: i },
+        Text2d::new(""),  // filled by the draw system
+        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        Transform::from_xyz(-150.0, -180.0 - (i as f32 * 30.0), 2.0),
+        TextFont { font_size: 24.0, ..default() },
+    ));
+}
 
 
     // Get the screen width from the primary window (auto-fits any resolution)
@@ -477,7 +491,25 @@ pub fn update_mp_text(mut player_query: Query<&BattlerStats, With<Player>>, mut 
 
 #[derive(Resource)]
 pub struct BattleMenu {
+    pub layer: MenuLayer,
     pub selected_index: usize,
+    pub selected_spell_index: usize,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum MenuLayer {
+    Command,
+    Spell,
+}
+
+#[derive(Resource)]
+pub struct KnownSpells {
+    pub spells: Vec<String>,
+}
+
+#[derive(Component)]
+pub struct SpellOption {
+    pub index: usize,
 }
 
 #[derive(Component)]
@@ -489,11 +521,100 @@ pub struct MenuOption {
 pub struct MenuWindow;
 
 pub fn cursor_movement(input: Res<ButtonInput<KeyCode>>, mut menu: ResMut<BattleMenu>) {
+    if menu.layer != MenuLayer::Command {
+        return;
+    }
     if input.just_pressed(KeyCode::ArrowUp) {
         menu.selected_index = (menu.selected_index + 3 - 1) % 3;
     }
     if input.just_pressed(KeyCode::ArrowDown) {
         menu.selected_index = (menu.selected_index + 1) % 3;
+    }
+}
+
+pub fn spell_cursor_movement(
+    input: Res<ButtonInput<KeyCode>>,
+    mut menu: ResMut<BattleMenu>,
+    known: Res<KnownSpells>,
+) {
+    if menu.layer != MenuLayer::Spell {
+        return;
+    }
+    let count = known.spells.len();
+    if count == 0 {
+        return;
+    }
+    if input.just_pressed(KeyCode::ArrowUp) {
+        menu.selected_spell_index = (menu.selected_spell_index + count - 1) % count;
+    }
+    if input.just_pressed(KeyCode::ArrowDown) {
+        menu.selected_spell_index = (menu.selected_spell_index + 1) % count;
+    }
+}
+
+pub fn spell_cancel(input: Res<ButtonInput<KeyCode>>, mut menu: ResMut<BattleMenu>) {
+    if menu.layer != MenuLayer::Spell {
+        return;
+    }
+    if input.just_pressed(KeyCode::Escape) {
+        menu.layer = MenuLayer::Command;
+    }
+}
+
+pub fn spell_confirm(
+    input: Res<ButtonInput<KeyCode>>,
+    mut menu: ResMut<BattleMenu>,
+    known: Res<KnownSpells>,
+    spell_lib: Res<SpellLibrary>,
+    battle_end_query: Query<&BattleEndOverlay>,
+    mut player_query: Query<(Entity, &mut BattlerStats), (With<Player>, With<ActionReady>)>,
+    mut enemy_query: Query<(&mut BattlerStats, &Transform), (With<Enemy>, Without<Player>)>,
+    mut damage_writer: MessageWriter<DamageEvent>,
+    mut commands: Commands,
+) {
+    if !battle_end_query.is_empty() {
+        return;
+    }
+    if menu.layer != MenuLayer::Spell {
+        return;
+    }
+
+    if input.just_pressed(KeyCode::Space) {
+        // Which spell is selected?
+        let spell_id = match known.spells.get(menu.selected_spell_index) {
+            Some(id) => id.clone(),
+            None => return,
+        };
+        let spell = match spell_lib.get_spell(&spell_id) {
+            Some(s) => s.clone(),
+            None => return,
+        };
+
+        if let Some((player_entity, mut player_stats)) = player_query.iter_mut().next() {
+            // Not enough MP? Refuse — don't consume the turn, stay in the menu.
+            if player_stats.mp < spell.mp_cost {
+                println!("Not enough MP for {}!", spell.name);
+                return;
+            }
+
+            if let Some((mut enemy_stats, enemy_transform)) = enemy_query.iter_mut().next() {
+                // Deduct MP
+                player_stats.mp -= spell.mp_cost;
+                // Magic damage: spell power + caster magic_attack - target magic_defense, floored at 1
+                let raw = spell.power + player_stats.magic_attack;
+                let damage = raw.saturating_sub(enemy_stats.magic_defense).max(1);
+                enemy_stats.hp = enemy_stats.hp.saturating_sub(damage);
+                damage_writer.write(DamageEvent {
+                    amount: damage,
+                    position: enemy_transform.translation,
+                });
+
+                // Consume the turn and return to the command layer
+                commands.entity(player_entity).remove::<ActionReady>();
+                player_stats.atb_timer = 0.0;
+                menu.layer = MenuLayer::Command;
+            }
+        }
     }
 }
 
@@ -545,17 +666,51 @@ pub fn draw_menu(
     }
 }
 
+pub fn draw_spell_menu(
+    menu: Res<BattleMenu>,
+    known: Res<KnownSpells>,
+    spell_lib: Res<SpellLibrary>,
+    mut query: Query<(&SpellOption, &mut Text2d, &mut TextColor, &mut Visibility)>,
+) {
+    let show = menu.layer == MenuLayer::Spell;
+
+    for (option, mut text, mut color, mut visibility) in query.iter_mut() {
+        if !show {
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+        *visibility = Visibility::Visible;
+
+        // Look up this spell's display name + cost
+        let label = known.spells.get(option.index)
+            .and_then(|id| spell_lib.get_spell(id))
+            .map(|s| format!("{} ({} MP)", s.name, s.mp_cost))
+            .unwrap_or_default();
+
+        if option.index == menu.selected_spell_index {
+            *color = TextColor(Color::srgb(1.0, 1.0, 0.0));
+            *text = Text2d::new(format!("> {}", label));
+        } else {
+            *color = TextColor(Color::srgb(1.0, 1.0, 1.0));
+            *text = Text2d::new(label);
+        }
+    }
+}
 
 pub fn confirm_selection(
-    input: Res<ButtonInput<KeyCode>>,
-    menu: Res<BattleMenu>,
-    mut player_query: Query<(Entity, &mut BattlerStats), (With<Player>, With<ActionReady>)>,
-    mut enemy_query: Query<(&mut BattlerStats, &Transform), (With<Enemy>, Without<Player>)>, // + &Transform
-    mut damage_writer: MessageWriter<DamageEvent>, // new param
-    mut commands: Commands,
+    mut input: ResMut<ButtonInput<KeyCode>>,
+    mut menu: ResMut<BattleMenu>,
     battle_end_query: Query<&BattleEndOverlay>,
+    mut player_query: Query<(Entity, &mut BattlerStats), (With<Player>, With<ActionReady>)>,
+    mut enemy_query: Query<(&mut BattlerStats, &Transform), (With<Enemy>, Without<Player>)>,
+    mut damage_writer: MessageWriter<DamageEvent>,
+    mut commands: Commands,
 ) {
     if !battle_end_query.is_empty() {
+        return;
+    }
+    // Only handle command-layer input here
+    if menu.layer != MenuLayer::Command {
         return;
     }
 
@@ -572,11 +727,14 @@ pub fn confirm_selection(
                             amount: damage,
                             position: enemy_transform.translation,
                         });
-                        println!("Player attacks! Enemy HP is now: {}", enemy_stats.hp);
                         acted = true;
                     }
                 }
-                1 => println!("Player uses Magic!"),
+                1 => { // Magic — enter the spell sub-menu (does NOT consume the turn)
+                    menu.layer = MenuLayer::Spell;
+                    menu.selected_spell_index = 0;
+                    input.clear_just_pressed(KeyCode::Space);
+                }
                 2 => println!("Player uses Item!"),
                 _ => {}
             }
